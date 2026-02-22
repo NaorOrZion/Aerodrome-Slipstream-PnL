@@ -66,12 +66,13 @@ slipstream_pnl/
 ├── __init__.py
 ├── __main__.py      # Entry point
 ├── config.py        # All configurable values (addresses, blocks, RPC)
-├── abi.py           # Minimal ABI fragments for NFPM, Gauge, ERC20
+├── abi.py           # Minimal ABI fragments for NFPM, Gauge, ERC20, Pool
 ├── rpc.py           # Web3 providers, chunked log fetching, tx helpers
 ├── pricing.py       # DeFiLlama historical price lookups + caching
 ├── decoder.py       # Raw log → typed tuple decoders
 ├── ownership.py     # TokenId ownership + tx-involvement checks
-└── analyzer.py      # Orchestrates the full pipeline + prints summary
+├── analyzer.py      # Orchestrates the full pipeline + prints summary
+└── lp_simulation.py # LP fee simulator with live on-chain data
 ```
 
 ---
@@ -128,7 +129,7 @@ TO_BLOCK = None          # None = latest block
 From the project root:
 
 ```bash
-python -m Aerodrome.slipstream_pnl
+python -m Aerodrome-Slipstream-PnL
 ```
 
 ### Debug mode
@@ -169,6 +170,39 @@ Block range: 42487586 -> 42487587
    Net Profit (Fees + AERO - Gas) USD: 0.65
 ============================================================
 ```
+
+---
+
+## LP Simulator (Live On-Chain Data)
+
+A standalone simulator that pulls **real-time pool data** from the blockchain to project LP fee earnings.
+
+### What it fetches automatically
+
+| Data | Source |
+|---|---|
+| **24h Trading Volume** | Scans all `Swap` events over the last ~43,200 blocks (~24h on Base) |
+| **Competing Liquidity** | Reads `pool.liquidity()` + `pool.slot0()` and converts to USD via virtual reserves |
+| **Fee Tier** | Reads `pool.fee()` directly from the pool contract |
+| **Token Prices** | Current USD prices from DeFiLlama |
+
+### Setup
+
+Set `POOL_ADDRESS` in your `.env` file:
+
+```env
+POOL_ADDRESS=0xYourSlipstreamPoolAddress
+```
+
+Find pool addresses at [aerodrome.finance](https://aerodrome.finance) or on [BaseScan](https://basescan.org).
+
+### Run
+
+```bash
+python lp_simulation.py
+```
+
+Edit `MY_INVESTMENT` and `MY_RANGE_PERCENT` at the top of `lp_simulation.py` to match your strategy.
 
 ---
 

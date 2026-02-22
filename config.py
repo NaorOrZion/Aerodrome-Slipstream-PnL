@@ -27,8 +27,8 @@ AERO_TOKEN_ADDRESS: str = "0x940181a94A35A4569E4529A3CDfB74e38FD98631"
 WETH_BASE_ADDRESS: str = "0x4200000000000000000000000000000000000006"
 
 # ── Block range ──────────────────────────────────────────────────────────────
-FROM_BLOCK: Optional[int] = 42487586
-TO_BLOCK: Optional[int] = 42487586  # None = latest
+FROM_BLOCK: Optional[int] = 42503982
+TO_BLOCK: Optional[int] = 42504012 	  # None = latest
 
 # ── Log fetching ─────────────────────────────────────────────────────────────
 LOG_CHUNK_SIZE: int = 100
@@ -36,6 +36,9 @@ LOG_CHUNK_SIZE: int = 100
 # ── DeFiLlama pricing ───────────────────────────────────────────────────────
 DEFILLAMA_API_KEY: Optional[str] = os.getenv("DEFILLAMA_API_KEY")
 DEFILLAMA_CHAIN: str = "base"
+
+# ── Simulation ────────────────────────────────────────────────────────────────
+POOL_ADDRESS: str = os.getenv("POOL_ADDRESS", "")
 
 # ── Debug ────────────────────────────────────────────────────────────────────
 DEBUG: bool = os.getenv("TRACE_AERO_DEBUG", "").strip().lower() in ("1", "true", "yes")
