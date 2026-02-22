@@ -81,7 +81,9 @@ slipstream_pnl/
 ### 1. Install dependencies
 
 ```bash
-pip install web3 python-dotenv requests
+python -m venv .venv
+.\venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
 ### 2. Configure RPC
