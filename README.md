@@ -118,6 +118,9 @@ GAUGE_ADDRESSES = ["0xYourGaugeAddress"]
 # Block range to analyze
 FROM_BLOCK = 42487586    # start block
 TO_BLOCK = None          # None = latest block
+
+# Your position's tokenId(s) — HIGHLY RECOMMENDED for large block ranges
+TOKEN_IDS = [50564254]
 ```
 
 #### How to find your Gauge address
@@ -125,6 +128,14 @@ TO_BLOCK = None          # None = latest block
 1. Go to [BaseScan](https://basescan.org) and search your wallet address
 2. Look for transactions with `ClaimRewards` events
 3. The contract that emits `ClaimRewards` is your Gauge address
+
+#### Why set TOKEN_IDS?
+
+The NFPM contract is **global** — it handles every Slipstream position across every pool on Base, producing hundreds of events per block. Without `TOKEN_IDS`, the script fetches ALL events and filters client-side, which hits RPC response-size limits (HTTP 413) on any non-trivial block range.
+
+When `TOKEN_IDS` is set, the RPC query filters by `tokenId` at the node level (it's an indexed event parameter), so only your position's events are returned. This makes large ranges (hours, days) feasible.
+
+Find your tokenId in the `Matched Events` output from a short test run, or on BaseScan by inspecting your `IncreaseLiquidity` transactions.
 
 ---
 
@@ -236,7 +247,7 @@ Edit `MY_INVESTMENT` and `MY_RANGE_PERCENT` at the top of `lp_simulation.py` to 
 
 ## Notes
 
-- The script scans **all** NFPM events in the block range, then filters down to your wallet's tokenIds. Large block ranges with many events will require more RPC calls.
+- Without `TOKEN_IDS`, the script scans **all** NFPM events in the block range, then filters client-side. This is only viable for small ranges (a few blocks). For anything larger, set `TOKEN_IDS` in `config.py` to filter at the RPC level.
 - **Boundary block filtering** handles bot rebalancing patterns where each block contains an exit-then-entry pair. At `FROM_BLOCK` and `TO_BLOCK`, only the relevant transaction from the tracked rebalance cycle is kept; events from adjacent cycles are excluded.
 - Log fetching uses chunked requests (100 blocks per request) with automatic retry on HTTP 413 errors.
 - Price and block-timestamp lookups are cached in memory to avoid redundant API/RPC calls within a single run.

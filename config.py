@@ -27,8 +27,15 @@ AERO_TOKEN_ADDRESS: str = "0x940181a94A35A4569E4529A3CDfB74e38FD98631"
 WETH_BASE_ADDRESS: str = "0x4200000000000000000000000000000000000006"
 
 # ── Block range ──────────────────────────────────────────────────────────────
-FROM_BLOCK: Optional[int] = 42487585
-TO_BLOCK: Optional[int] = 42487587 	  # None = latest
+FROM_BLOCK: Optional[int] = 42483702
+TO_BLOCK: Optional[int] = None 	  # None = latest
+
+# ── Token IDs (optional — massively improves performance) ────────────────────
+# When set, NFPM event fetching filters at the RPC level by tokenId (indexed
+# topic), so only your positions' events are returned instead of the entire
+# global NFPM contract.  Without this, large block ranges WILL hit 413 errors.
+# Find your tokenId in the Matched Events output or on BaseScan.
+TOKEN_IDS: list[int] = [50564254]
 
 # ── Log fetching ─────────────────────────────────────────────────────────────
 LOG_CHUNK_SIZE: int = 100

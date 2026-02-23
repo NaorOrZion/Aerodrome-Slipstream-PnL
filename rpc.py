@@ -60,10 +60,13 @@ def _get_logs_single(
 ) -> list:
     try:
         return w3.eth.get_logs(params)
-    except Exception as e:
-        if not _is_413(e) or fallback_w3 is None:
+    except Exception as primary_err:
+        if not _is_413(primary_err) or fallback_w3 is None:
             raise
-        return fallback_w3.eth.get_logs(params)
+        try:
+            return fallback_w3.eth.get_logs(params)
+        except Exception:
+            raise primary_err
 
 
 def _fetch_chunk(
@@ -113,25 +116,32 @@ def get_logs_chunked(
         except Exception as e:
             if not _is_413(e):
                 raise
+
+            single_ok = False
             if retry_single_topics and len(retry_single_topics) > 1:
-                all_logs: List[list] = []
-                with ThreadPoolExecutor(max_workers=len(retry_single_topics)) as ex:
-                    futures = {
-                        ex.submit(
-                            _fetch_chunk, w3, addr, st, current, end, fallback_w3
-                        ): st
-                        for st in retry_single_topics
-                    }
-                    for fut in as_completed(futures):
-                        all_logs.append(fut.result())
-                logs = []
-                for batch in all_logs:
-                    logs.extend(batch)
-                logs.sort(key=lambda l: (l.get("blockNumber", 0), l.get("logIndex", 0)))
-            elif chunk > 50:
-                chunk = max(50, chunk // 2)
-                continue
-            else:
+                try:
+                    all_logs: List[list] = []
+                    with ThreadPoolExecutor(max_workers=len(retry_single_topics)) as ex:
+                        futures = {
+                            ex.submit(
+                                _fetch_chunk, w3, addr, st, current, end, fallback_w3
+                            ): st
+                            for st in retry_single_topics
+                        }
+                        for fut in as_completed(futures):
+                            all_logs.append(fut.result())
+                    logs = []
+                    for batch in all_logs:
+                        logs.extend(batch)
+                    logs.sort(key=lambda l: (l.get("blockNumber", 0), l.get("logIndex", 0)))
+                    single_ok = True
+                except Exception:
+                    pass
+
+            if not single_ok:
+                if chunk > 2:
+                    chunk = max(2, chunk // 2)
+                    continue
                 raise
 
         yield from logs

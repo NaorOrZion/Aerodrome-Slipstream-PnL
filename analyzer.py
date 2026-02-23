@@ -23,6 +23,7 @@ from .config import (
     GAUGE_ADDRESSES,
     NFPM_ADDRESS,
     TO_BLOCK,
+    TOKEN_IDS,
 )
 from .decoder import (
     CLAIM_REWARDS_TOPIC,
@@ -46,11 +47,26 @@ from .rpc import (
 # Log fetchers (thin wrappers that bind contract addresses / topics)
 # ═════════════════════════════════════════════════════════════════════════════
 
+def _token_id_topic(tid: int) -> str:
+    """Encode a tokenId as a 32-byte hex topic for eth_getLogs filtering."""
+    return "0x" + hex(tid)[2:].zfill(64)
+
+
 def _fetch_nfpm_logs(
     w3: Web3, from_block: int, to_block: int, fallback: Optional[Web3]
 ) -> list:
-    topics_combined = [[INCREASE_LIQUIDITY_TOPIC, DECREASE_LIQUIDITY_TOPIC, COLLECT_TOPIC]]
-    retry_single = [[INCREASE_LIQUIDITY_TOPIC], [DECREASE_LIQUIDITY_TOPIC], [COLLECT_TOPIC]]
+    event_types = [INCREASE_LIQUIDITY_TOPIC, DECREASE_LIQUIDITY_TOPIC, COLLECT_TOPIC]
+
+    if TOKEN_IDS:
+        token_id_topics = [_token_id_topic(tid) for tid in TOKEN_IDS]
+        topics_combined = [event_types, token_id_topics]
+        retry_single = [
+            [[et], token_id_topics] for et in event_types
+        ]
+    else:
+        topics_combined = [event_types]
+        retry_single = [[et] for et in event_types]
+
     logs = list(
         get_logs_chunked(
             w3,
