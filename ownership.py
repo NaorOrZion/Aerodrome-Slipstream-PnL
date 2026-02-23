@@ -98,8 +98,7 @@ def tx_involves_address(
         if not topic_match(topics[0], TRANSFER_TOPIC):
             continue
         from_addr = _topic_to_address(topics[1])
-        to_addr = _topic_to_address(topics[2])
-        if from_addr == address_lower or to_addr == address_lower:
+        if from_addr == address_lower:
             return True
 
     return False

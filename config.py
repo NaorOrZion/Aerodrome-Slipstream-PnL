@@ -27,8 +27,8 @@ AERO_TOKEN_ADDRESS: str = "0x940181a94A35A4569E4529A3CDfB74e38FD98631"
 WETH_BASE_ADDRESS: str = "0x4200000000000000000000000000000000000006"
 
 # ── Block range ──────────────────────────────────────────────────────────────
-FROM_BLOCK: Optional[int] = 42503982
-TO_BLOCK: Optional[int] = 42504012 	  # None = latest
+FROM_BLOCK: Optional[int] = 42487585
+TO_BLOCK: Optional[int] = 42487587 	  # None = latest
 
 # ── Log fetching ─────────────────────────────────────────────────────────────
 LOG_CHUNK_SIZE: int = 100

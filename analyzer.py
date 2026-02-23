@@ -180,6 +180,48 @@ def _filter_owned_nfpm_logs(
     return filtered, seen_ids
 
 
+def _compute_excluded_boundary_txs(
+    logs: list,
+    from_block: int,
+    to_block: int,
+) -> set[str]:
+    """
+    Identify tx hashes at boundary blocks that belong to adjacent
+    rebalance cycles and should be excluded.
+
+    Bot-driven rebalancing produces paired transactions in each block:
+    the EXIT from the old range followed by the ENTRY into the new range.
+    At boundary blocks only one of the two belongs to the tracked period:
+
+    - FROM_BLOCK: the LAST tx is the entry into the tracked position,
+      earlier txs are exits/entries from a previous cycle.
+    - TO_BLOCK:   the FIRST tx is the exit from the tracked position,
+      later txs are exits/entries from a subsequent cycle.
+    """
+    if from_block == to_block:
+        return set()
+
+    block_tx_order: dict[int, list[str]] = {}
+    for log in logs:
+        bn = log["blockNumber"]
+        h = log["transactionHash"]
+        h = h.hex() if isinstance(h, bytes) else h
+        if bn not in block_tx_order:
+            block_tx_order[bn] = []
+        if h not in block_tx_order[bn]:
+            block_tx_order[bn].append(h)
+
+    excluded: set[str] = set()
+    for bn, txs in block_tx_order.items():
+        if len(txs) <= 1:
+            continue
+        if bn == from_block:
+            excluded.update(txs[:-1])
+        elif bn == to_block:
+            excluded.update(txs[1:])
+    return excluded
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # PnL computation
 # ═════════════════════════════════════════════════════════════════════════════
@@ -330,11 +372,57 @@ def _compute_gas_costs(
 # Output
 # ═════════════════════════════════════════════════════════════════════════════
 
+def _print_event_details(
+    our_nfpm_logs: list,
+    our_claims: list[tuple],
+) -> None:
+    """Print detailed per-event breakdown with transaction hashes."""
+    print("\n" + "=" * 70)
+    print("Matched Events")
+    print("=" * 70)
+
+    idx = 1
+    for log in our_nfpm_logs:
+        decoded = decode_nfpm_log(log)
+        if not decoded:
+            continue
+        tx_hash = log["transactionHash"]
+        tx_hash = tx_hash.hex() if isinstance(tx_hash, bytes) else tx_hash
+        block = log["blockNumber"]
+
+        name = decoded[0]
+        tid = decoded[1]
+        a0 = decoded[2]
+        a1 = decoded[3]
+
+        print(f"  [{idx}] {name:<22} tokenId={tid}  block={block}")
+        print(f"      tx: {tx_hash}")
+        detail = f"      amount0={a0}  amount1={a1}"
+        if name == "Collect" and len(decoded) > 5:
+            detail += f"  recipient={decoded[5]}"
+        print(detail)
+        idx += 1
+
+    if our_claims:
+        print("-" * 70)
+        for claim in our_claims:
+            user, amount, block, tx_hash = claim
+            aero_human = Decimal(amount) / Decimal(10**18)
+            print(f"  [{idx}] ClaimRewards         block={block}")
+            print(f"      tx: {tx_hash}")
+            print(f"      amount: {aero_human:.6f} AERO")
+            idx += 1
+
+    print("=" * 70)
+
+
 def _print_summary(
     from_block: int,
     to_block: int,
     result: PnLResult,
 ) -> None:
+    aero_tokens = Decimal(result.aero_claimed_wei) / Decimal(10**18)
+
     print("\n" + "=" * 60)
     print("Aerodrome Slipstream LP PnL Summary")
     print("=" * 60)
@@ -346,7 +434,7 @@ def _print_summary(
     print(f"   Net Liquidity Provided (USD):       {result.net_liquidity_usd:,.2f}")
     print(f"   Rebalances:                         {result.rebalance_count}")
     print(f"2. Total Trading Fees Earned (USD):    {result.fee_earned_usd:,.2f}")
-    print(f"3. Total AERO Rewards Claimed:        {result.aero_claimed_wei} wei | USD: {result.aero_claimed_usd:,.2f}")
+    print(f"3. Total AERO Rewards Claimed:        {aero_tokens:.6f} AERO | USD: {result.aero_claimed_usd:,.2f}")
     print(f"4. Total Gas Fees Paid (USD):         {result.gas_cost_usd:,.2f}")
     print("-" * 60)
     print(f"   Net Profit (Fees + AERO - Gas) USD: {result.net_profit_usd:,.2f}")
@@ -401,8 +489,23 @@ def run_analysis() -> None:
         print("[DEBUG] Our NFPM logs (after filter):", len(our_nfpm_logs), "for tokenIds:", sorted(our_ids))
         for log in our_nfpm_logs:
             d = decode_nfpm_log(log)
+            tx_h = log["transactionHash"]
+            tx_h = tx_h.hex() if isinstance(tx_h, bytes) else tx_h
             if d:
-                print(f"[DEBUG]   {d[0]} tokenId={d[1]} amt0={d[2]} amt1={d[3]} block={log['blockNumber']}")
+                print(f"[DEBUG]   {d[0]} tokenId={d[1]} amt0={d[2]} amt1={d[3]} block={log['blockNumber']} tx={tx_h}")
+
+    # ── Step 4b: Exclude boundary-block txs from adjacent cycles ────────
+    excluded_txs = _compute_excluded_boundary_txs(
+        our_nfpm_logs, from_block, to_block
+    )
+    if excluded_txs:
+        our_nfpm_logs = [
+            log for log in our_nfpm_logs
+            if (log["transactionHash"].hex()
+                if isinstance(log["transactionHash"], bytes)
+                else log["transactionHash"])
+            not in excluded_txs
+        ]
 
     # ── Step 5: Filter Gauge ClaimRewards ────────────────────────────────
     our_claims = [
@@ -411,6 +514,7 @@ def run_analysis() -> None:
         if (decoded := decode_gauge_log(log))
         and decoded[0]
         and decoded[0].lower() == address_lower
+        and decoded[3] not in excluded_txs
     ]
 
     # ── Step 6: Resolve token pairs for USD valuation ────────────────────
@@ -436,5 +540,6 @@ def run_analysis() -> None:
     pnl.aero_claimed_wei, pnl.aero_claimed_usd = _compute_aero_rewards(w3, our_claims)
     pnl.gas_cost_usd = _compute_gas_costs(w3, our_nfpm_logs, our_claims, to_block)
 
-    # ── Step 8: Print summary ────────────────────────────────────────────
+    # ── Step 8: Print details and summary ────────────────────────────────
+    _print_event_details(our_nfpm_logs, our_claims)
     _print_summary(from_block, to_block, pnl)

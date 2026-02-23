@@ -46,8 +46,12 @@ Since a bot initiates the transactions, the script cannot simply filter by `tx.f
 4. **For staked NFTs**, verifies the transaction involves the wallet by checking:
    - `tx.from` matches the wallet
    - `Collect` event recipient matches the wallet
-   - Any ERC20/ERC721 `Transfer` in the receipt has the wallet as sender or receiver
+   - An outbound `Transfer` in the receipt originates from the wallet (tokens sent to provide liquidity)
 5. **Keeps only events** for tokenIds that belong to the wallet
+6. **Filters boundary blocks** — bot rebalancing produces paired transactions per block (exit old range → enter new range). At the edges of the analysis window:
+   - `FROM_BLOCK`: only the **last** transaction is kept (the entry into the tracked position)
+   - `TO_BLOCK`: only the **first** transaction is kept (the exit from the tracked position)
+   - Middle blocks are unaffected
 
 ### Fee Calculation
 
@@ -153,21 +157,45 @@ DEFILLAMA_API_KEY=your_key_here
 ## Example Output
 
 ```
+======================================================================
+Matched Events
+======================================================================
+  [1] IncreaseLiquidity      tokenId=50564254  block=42487586
+      tx: 70487297d761079f6efadc4c03593294fd884f5edec1de93b0947f6e70f3a176
+      amount0=264999999999999999954  amount1=77962613460
+  [2] Collect                tokenId=50564254  block=42487586
+      tx: 70487297d761079f6efadc4c03593294fd884f5edec1de93b0947f6e70f3a176
+      amount0=0  amount1=0  recipient=0xcf979e05c91450e1fb5d98139101f0efcd934d07
+  [3] Collect                tokenId=50564254  block=42487587
+      tx: 114857f43235d0b2dd5ea000efe6b28bc46f6ac0d7894adaa5854ba3b0746977
+      amount0=0  amount1=0  recipient=0xcf979e05c91450e1fb5d98139101f0efcd934d07
+  [4] DecreaseLiquidity      tokenId=50564254  block=42487587
+      tx: 114857f43235d0b2dd5ea000efe6b28bc46f6ac0d7894adaa5854ba3b0746977
+      amount0=264999999999999999953  amount1=77962613459
+  [5] Collect                tokenId=50564254  block=42487587
+      tx: 114857f43235d0b2dd5ea000efe6b28bc46f6ac0d7894adaa5854ba3b0746977
+      amount0=264999999999999999953  amount1=77962613459  recipient=0xcf979e05c91450e1fb5d98139101f0efcd934d07
+----------------------------------------------------------------------
+  [6] ClaimRewards         block=42487587
+      tx: 114857f43235d0b2dd5ea000efe6b28bc46f6ac0d7894adaa5854ba3b0746977
+      amount: 1.058016 AERO
+======================================================================
+
 ============================================================
 Aerodrome Slipstream LP PnL Summary
 ============================================================
 Address:     0xCF979E05C91450e1FB5d98139101F0EFcd934d07
 Block range: 42487586 -> 42487587
 ------------------------------------------------------------
-1. Gross Deposited (USD):              1,355,506.22  (2 deposits)
-   Gross Withdrawn (USD):              1,355,485.76  (2 withdrawals)
-   Net Liquidity Provided (USD):       20.46
-   Rebalances:                         2
+1. Gross Deposited (USD):              598,414.20  (1 deposit)
+   Gross Withdrawn (USD):              598,403.97  (1 withdrawal)
+   Net Liquidity Provided (USD):       10.23
+   Rebalances:                         1
 2. Total Trading Fees Earned (USD):    0.00
-3. Total AERO Rewards Claimed:        2116...89 wei | USD: 0.68
-4. Total Gas Fees Paid (USD):         0.03
+3. Total AERO Rewards Claimed:        1.058016 AERO | USD: 0.34
+4. Total Gas Fees Paid (USD):         0.01
 ------------------------------------------------------------
-   Net Profit (Fees + AERO - Gas) USD: 0.65
+   Net Profit (Fees + AERO - Gas) USD: 0.33
 ============================================================
 ```
 
@@ -209,6 +237,8 @@ Edit `MY_INVESTMENT` and `MY_RANGE_PERCENT` at the top of `lp_simulation.py` to 
 ## Notes
 
 - The script scans **all** NFPM events in the block range, then filters down to your wallet's tokenIds. Large block ranges with many events will require more RPC calls.
+- **Boundary block filtering** handles bot rebalancing patterns where each block contains an exit-then-entry pair. At `FROM_BLOCK` and `TO_BLOCK`, only the relevant transaction from the tracked rebalance cycle is kept; events from adjacent cycles are excluded.
 - Log fetching uses chunked requests (100 blocks per request) with automatic retry on HTTP 413 errors.
 - Price and block-timestamp lookups are cached in memory to avoid redundant API/RPC calls within a single run.
 - Gas costs are attributed to your wallet even when a bot pays the gas, since it is an operational cost of the LP strategy.
+- The **Matched Events** section is always printed, showing each event's transaction hash, tokenId, block, and raw amounts for easy on-chain verification.
